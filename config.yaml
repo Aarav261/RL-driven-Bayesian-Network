@@ -1,0 +1,31 @@
+# RLiG experiment config. Every knob the report must discuss lives here.
+seed: 0
+
+dataset: asia          # asia | sachs | insurance | child | alarm | synthetic
+data_path: data/asia.csv
+true_structure: data/asia_true.txt   # ground-truth DAG for SHD
+
+# --- structure constraints ---
+max_indegree_k: 2      # in {2, 3}
+budget_T: 50           # edit budget per episode
+l_stall: 10            # stop if no improvement for this many steps
+
+# --- tiling ---
+tile_L: 5              # tile length
+I_g: [4]               # generative-score step indices within a tile (0..L-1)
+N_s: 2000             # samples drawn from the BN for the generative score
+
+# --- hybrid reward ---
+alpha: 1.0             # weight on delta_bic
+beta: 1.0             # weight on generative score
+gen_score: held_out_loglik   # held_out_loglik | js | mmd
+
+# --- CPT learning ---
+dirichlet_alpha: 1.0  # smoothing pseudocount
+
+# --- Q-learning ---
+lr: 0.1
+gamma: 0.95
+epsilon: 0.2
+epsilon_decay: 0.999
+episodes: 2000
