@@ -30,7 +30,7 @@ hc_max_no_improve: 10  # Tabu stops after this many moves without beating the be
 
 # --- RLBayes baseline ---
 rlbayes_max_len: 500   # Q-table rows kept
-rlbayes_max_iter: 5000
+rlbayes_max_iter: 100000   # = episodes x budget_T, the most env steps Q-learning can take
 rlbayes_theta: 0.1     # probability of jumping back to the best BN each iteration
 
 # --- CPT learning ---
@@ -41,4 +41,5 @@ lr: 0.1
 gamma: 0.95
 epsilon: 0.2
 epsilon_decay: 0.999
+epsilon_min: 0.01       # floor, so longer runs keep exploring (2000 eps ends at ~0.027)
 episodes: 2000

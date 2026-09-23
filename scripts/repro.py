@@ -5,8 +5,12 @@
 
 Per seed: sample n rows from the network, split train / val / test, then
     - HC, Tabu, GES and RLBayes learn from train (BIC only);
-    - Q-learning learns from train, with GenScore rewarded on val;
+    - Q-learning learns from train, with GenScore rewarded on val. Two rows:
+      qlearn_best (best graph the search saw, by the hybrid score) and qlearn_greedy
+      (the learned policy's greedy rollout);
     - every method is reported on test, which no method sees during learning.
+steps = graph edits made (HC/Tabu moves, RLBayes iterations, Q-learning env steps);
+gen_evals = GenScore simulations; unseen = greedy moves from states not in the Q-table.
 Writes report/tables/<dataset>.csv (one row per method per seed) and prints
 mean +- std per method.
 """
@@ -31,7 +35,8 @@ from scoring.genscore import held_out_loglik, neg_js
 from scoring.simulate import ancestral_sample
 
 OUT = Path(__file__).parent.parent / "report" / "tables"
-METRICS = ["shd", "shd_cpdag", "f1", "bic_per_row", "test_loglik", "test_neg_js", "seconds"]
+METRICS = ["shd", "shd_cpdag", "f1", "bic_per_row", "test_loglik", "test_neg_js", "seconds",
+           "steps", "gen_evals", "unseen"]
 
 
 def evaluate(A, A_true, bic, train, test, cards, cfg, seed):
@@ -47,33 +52,46 @@ def run_seed(cfg, seed):
     train, val, test = split(data, cfg["split"], seed=seed)
     k, bic = cfg["max_indegree_k"], BIC(train, cards)
 
+    # Each learner returns {row name: (DAG, extra columns)}.
     def qlearn():
         env = RLiGEnv(train, val, cards, cfg, seed=seed)
-        agent = QLearningAgent(env, cfg["lr"], cfg["gamma"], cfg["epsilon"],
-                               cfg["epsilon_decay"], seed=seed)
+        agent = QLearningAgent(env, cfg["lr"], cfg["gamma"], cfg["epsilon"], cfg["epsilon_decay"],
+                               cfg["epsilon_min"], seed=seed)
         agent.train(cfg["episodes"])
-        return agent.best_graph()[0]
+        best = agent.best_searched()[0]
+        greedy = agent.best_graph()[0]
+        extra = {"steps": agent.steps, "gen_evals": env.n_gen_evals}
+        return {"qlearn_best": (best, extra),
+                "qlearn_greedy": (greedy, dict(extra, unseen=agent.greedy_unseen))}
 
-    methods = {
-        "true": lambda: A_true,
-        "hc": lambda: hill_climb(train, cards, k, bic=bic)[0],
-        "tabu": lambda: hill_climb(train, cards, k, tabu_len=cfg["hc_tabu_len"],
-                                   max_no_improve=cfg["hc_max_no_improve"], bic=bic)[0],
-        "ges": lambda: ges(train, cards),
-        "rlbayes": lambda: RLBayesAgent(len(cards), bic, k, cfg["rlbayes_max_len"],
-                                        cfg["rlbayes_max_iter"], cfg["rlbayes_theta"],
-                                        seed=seed).train()[0],
-        "qlearn": qlearn,
-    }
+    def hc(**kw):
+        A, _, hist = hill_climb(train, cards, k, bic=bic, **kw)
+        return A, {"steps": len(hist) - 1}
+
+    def rlbayes():
+        agent = RLBayesAgent(len(cards), bic, k, cfg["rlbayes_max_len"], cfg["rlbayes_max_iter"],
+                             cfg["rlbayes_theta"], seed=seed)
+        return agent.train()[0], {"steps": agent.max_iter}
+
+    methods = [
+        lambda: {"true": (A_true, {})},
+        lambda: {"hc": hc()},
+        lambda: {"tabu": hc(tabu_len=cfg["hc_tabu_len"], max_no_improve=cfg["hc_max_no_improve"])},
+        lambda: {"ges": (ges(train, cards), {})},
+        lambda: {"rlbayes": rlbayes()},
+        qlearn,
+    ]
     rows = []
-    for name, learn in methods.items():
+    for learn in methods:
         t = time.perf_counter()
-        A = learn()
-        row = {"method": name, "seed": seed, "seconds": time.perf_counter() - t}
-        row.update(evaluate(A, A_true, bic, train, test, cards, cfg, seed))
-        rows.append(row)
-        print(f"  seed {seed} {name:8s} SHD {row['shd']:2d}  CPDAG SHD {row['shd_cpdag']:2d}  "
-              f"BIC/N {row['bic_per_row']:.4f}  {row['seconds']:.1f}s")
+        out = learn()
+        secs = time.perf_counter() - t
+        for name, (A, extra) in out.items():
+            row = {"method": name, "seed": seed, "seconds": secs, **extra}
+            row.update(evaluate(A, A_true, bic, train, test, cards, cfg, seed))
+            rows.append(row)
+            print(f"  seed {seed} {name:13s} SHD {row['shd']:2d}  CPDAG SHD {row['shd_cpdag']:2d}  "
+                  f"BIC/N {row['bic_per_row']:.4f}  steps {row.get('steps', '-')}  {secs:.1f}s")
     return rows
 
 
@@ -88,10 +106,11 @@ def main(config_path, n_seeds=None):
         w.writeheader()
         w.writerows(rows)
 
-    print(f"\n{'method':8s} " + " ".join(f"{m:>18s}" for m in METRICS))
+    print(f"\n{'method':13s} " + " ".join(f"{m:>18s}" for m in METRICS))
     for name in dict.fromkeys(r["method"] for r in rows):
-        vals = [[r[m] for r in rows if r["method"] == name] for m in METRICS]
-        print(f"{name:8s} " + " ".join(f"{np.mean(v):9.4f} +-{np.std(v):7.4f}" for v in vals))
+        vals = [[r[m] for r in rows if r["method"] == name and m in r] for m in METRICS]
+        print(f"{name:13s} " + " ".join(f"{np.mean(v):9.4f} +-{np.std(v):7.4f}" if v else f"{'-':>18s}"
+                                        for v in vals))
     print(f"\nwrote {path}")
 
 

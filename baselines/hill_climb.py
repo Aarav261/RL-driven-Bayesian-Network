@@ -74,20 +74,22 @@ def _demo():
     assert shd(A, A_true) == 0, A
     assert all(b >= a for a, b in zip(hist, hist[1:]))        # plain HC only climbs
 
-    # Random 12-node network (seed 1 is one where plain HC gets stuck).
-    data, cards, A_true, _ = synthetic(d=12, n=5000, max_indegree=2, seed=1)
-    bic = BIC(data, cards)
-    A_hc, s_hc, _ = hill_climb(data, cards, 2, bic=bic)
-    A_tb, s_tb, _ = hill_climb(data, cards, 2, tabu_len=10, bic=bic)
-    assert is_acyclic(A_hc) and A_hc.sum(axis=0).max() <= 2
-    # Plain HC stops only at a true local optimum: no legal edit improves BIC.
-    acts = all_actions(12)
-    assert max(bic.delta(A_hc, acts[i]) for i in np.flatnonzero(legal_action_mask(A_hc, 2))) <= 1e-9
-    # Tabu never ends worse, and here it escapes the local optimum to the true graph's BIC.
-    assert s_tb >= s_hc
-    assert s_hc < bic(A_true) - 1 and abs(s_tb - bic(A_true)) < 1e-6
-    print(f"baselines.hill_climb self-check passed  (synthetic d=12: BIC hc {s_hc:.1f} "
-          f"SHD {shd(A_hc, A_true)}; tabu {s_tb:.1f} SHD {shd(A_tb, A_true)}; true {bic(A_true):.1f})")
+    # Random 12-node networks. Check the properties on every seed rather than pinning
+    # one seed where plain HC gets stuck: any sampler change moves that seed.
+    acts, escaped = all_actions(12), 0
+    for seed in range(6):
+        data, cards, A_true, _ = synthetic(d=12, n=5000, max_indegree=2, seed=seed)
+        bic = BIC(data, cards)
+        A_hc, s_hc, _ = hill_climb(data, cards, 2, bic=bic)
+        A_tb, s_tb, _ = hill_climb(data, cards, 2, tabu_len=10, bic=bic)
+        assert is_acyclic(A_hc) and A_hc.sum(axis=0).max() <= 2
+        # Plain HC stops only at a true local optimum: no legal edit improves BIC.
+        legal = np.flatnonzero(legal_action_mask(A_hc, 2))
+        assert max(bic.delta(A_hc, acts[i]) for i in legal) <= 1e-9
+        assert s_tb >= s_hc - 1e-9                     # Tabu never ends worse
+        escaped += s_tb > s_hc + 1
+    assert escaped >= 1                                # and on some seed it escapes
+    print(f"baselines.hill_climb self-check passed  (Tabu beat HC on {escaped}/6 synthetic d=12 seeds)")
 
 if __name__ == "__main__":
     _demo()

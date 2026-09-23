@@ -17,7 +17,7 @@ I'm taking a different angle: **treat structure learning as a sequential
 decision process and let an RL agent search it.** The agent starts from an empty
 graph and edits it one edge at a time (add / delete / reverse), guided by a
 reward that says whether each edit made the graph a better explanation of the
-data. Over many edits it converges on a high-scoring network without ever
+data. The hope is that over many edits it finds a high-scoring network without ever
 touching most of the search space.
 
 RL for structure learning has been tried before with a whole-graph generator

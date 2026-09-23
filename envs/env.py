@@ -50,7 +50,8 @@ class RLiGEnv:
         self.bic = BIC(self.train, self.cards)
         self.actions = all_actions(self.d)
         self.seed = seed                          # fixed sampler seed for neg_js
-        self.n_gen_calls = 0                      # compute cost, for the tiling plots
+        self.n_gen_calls = 0                      # GenScore requests, cache hits included
+        self.n_gen_evals = 0                      # actual simulations (cache misses): the real cost
         # ponytail: unbounded, one float per distinct graph scored; fine for ~1e5 graphs.
         self._gen_cache = {}
         self.reset()
@@ -109,6 +110,7 @@ class RLiGEnv:
         self.n_gen_calls += 1
         key = A.tobytes()
         if key not in self._gen_cache:
+            self.n_gen_evals += 1
             cfg = self.cfg
             cpts = fit_cpts(A, self.train, self.cards, cfg["dirichlet_alpha"])
             if cfg["gen_score"] == "held_out_loglik":
@@ -187,6 +189,9 @@ def _demo():
     g = env.gen_score(A)
     env._gen_cache.clear()
     assert env.gen_score(A) == g
+    assert env.n_gen_calls == 3 and env.n_gen_evals == 3       # reset, g, g after clear
+    env.gen_score(A)
+    assert env.n_gen_calls == 4 and env.n_gen_evals == 3       # cache hit costs nothing
     print("envs.env self-check passed")
 
 
