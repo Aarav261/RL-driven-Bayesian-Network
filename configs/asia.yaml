@@ -1,15 +1,15 @@
 # RLiG experiment config. Every knob the report must discuss lives here.
-seed: 0
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]   # one full run per seed (data sample + search)
 
 dataset: asia          # asia | sachs | insurance | child | alarm | synthetic
-data_path: data/raw/asia.csv
-true_structure: data/raw/asia_true.txt   # ground-truth DAG for SHD
+n: 5000                # rows sampled from data/bif/<dataset>.bif (truth DAG comes from the same file)
+split: [0.6, 0.2, 0.2] # train (BIC + CPTs) / val (GenScore reward) / test (reported metrics only)
 
 # --- structure constraints ---
 max_indegree_k: 2      # in {2, 3}
 budget_T: 50           # edit budget per episode
-l_stall: 10            # stop after this many consecutive steps with reward <= 0
-penalty: -1.0          # reward for an infeasible action (nats per row, same unit as dBIC/N)
+l_stall: 10            # stop after this many consecutive steps with dBIC <= 0
+penalty: -0.05         # reward for an infeasible action; ~25x a typical |dBIC/N| (~2e-3 on ASIA)
 
 # --- tiling ---
 tile_L: 5              # tile length
@@ -21,6 +21,10 @@ alpha: 1.0             # weight on delta_bic / N (nats per row)
 beta: 1.0             # weight on generative score
 gen_score: held_out_loglik   # held_out_loglik | js   (mmd later)
 reward_mode: difference      # difference: beta*(Gen(G') - Gen at last gen step) | absolute: beta*Gen(G')
+
+# --- Hill-Climbing baseline ---
+hc_tabu_len: 10        # 0 = plain HC; >0 = Tabu over the last N graphs visited (bnlearn default 10)
+hc_max_no_improve: 10  # Tabu stops after this many moves without beating the best graph
 
 # --- CPT learning ---
 dirichlet_alpha: 1.0  # smoothing pseudocount

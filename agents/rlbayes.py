@@ -66,6 +66,8 @@ class RLBayesAgent:
 
     def _prune(self):
         cur_key = self._key(self.rows[self.cur])
+        if len(self.rows) <= self.max_len:
+            return
         while len(self.rows) > self.max_len:
             w = int(np.argmin(self.scores))
             del self.rows[w]; del self.Q[w]; del self.scores[w]

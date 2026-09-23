@@ -6,10 +6,14 @@
     action     index into envs.dag.all_actions(d): add / delete / reverse (i, j)
     transition apply the edit if feasible, else stay put and pay `penalty`
     reward     alpha * dBIC/N  +  [tau in I_g] * beta * G
-    done       t == budget_T, or L_stall consecutive steps with reward <= 0
+    done       t == budget_T, or L_stall consecutive steps with dBIC <= 0
 
-dBIC is divided by N so both terms are in nats per row (held-out log-lik is a
-per-row mean), which keeps alpha and beta on comparable scales across datasets.
+dBIC is divided by N so it is in nats per row, which keeps alpha comparable across
+datasets. Only held-out log-lik shares that unit; neg_js is in bits and its step
+changes are about 4x smaller than dBIC/N on ASIA, so beta has to absorb the scale.
+
+The stall counter follows dBIC, not the full reward: a noisy generative term could
+otherwise push reward above 0 by chance and keep a going-nowhere episode alive.
 
 G depends on reward_mode (the spec allows either):
     "absolute"    G = GenScore(G')
@@ -85,7 +89,7 @@ class RLiGEnv:
                     g, self.gen_prev = g - self.gen_prev, g
                 reward += cfg["beta"] * g
 
-        self.stall = 0 if reward > 0 else self.stall + 1
+        self.stall = 0 if info["delta_bic"] > 0 else self.stall + 1
         done = self.t >= cfg["budget_T"] or self.stall >= cfg["l_stall"]
         return self.state(), reward, done, info
 
@@ -119,7 +123,7 @@ def _demo():
     train, held = data[:4000], data[4000:]
     cfg = dict(max_indegree_k=2, budget_T=12, l_stall=100, tile_L=3, I_g=[2], N_s=2000,
                alpha=1.0, beta=1.0, gen_score="held_out_loglik", reward_mode="difference",
-               dirichlet_alpha=1.0, penalty=-1.0)
+               dirichlet_alpha=1.0, penalty=-0.05)
 
     env = RLiGEnv(train, held, cards, cfg)
     idx = {a: n for n, a in enumerate(env.actions)}
@@ -134,7 +138,7 @@ def _demo():
 
     # Illegal action (edge already there): penalty, DAG unchanged, still costs a step.
     s, r, done, info = env.step(idx[(ADD, 0, 1)])
-    assert not info["legal"] and r == -1.0 and s["A"].sum() == 1 and s["tau"] == 2
+    assert not info["legal"] and r == -0.05 and s["A"].sum() == 1 and s["tau"] == 2
 
     # Tiling: 12 steps with L=3, I_g={2} -> generative at t = 2, 5, 8, 11, all legal here.
     gens = 0

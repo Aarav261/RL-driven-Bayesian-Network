@@ -1,4 +1,4 @@
-# RLiG — Reinforcement Learning for Bayesian Network Structure Learning
+# RLiG: Reinforcement Learning for Bayesian Network Structure Learning
 
 An exploration into whether reinforcement learning can learn the *structure* of a
 Bayesian Network more effectively than the search heuristics the field usually
@@ -6,11 +6,12 @@ leans on.
 
 ## What I'm trying to do
 
-Learning the graph of a Bayesian Network — which variable causes which — is an
+Learning the graph of a Bayesian Network (which variable causes which) is an
 NP-hard search: the number of possible DAGs grows super-exponentially with the
-number of variables, so we can't enumerate them. The established approaches
-(MCMC sampling, and more recently GFlowNets à la Deleu et al., 2022) are either
-slow on large distributions or short on evidence that they beat the classics.
+number of variables, so we can't enumerate them. Score-based search such as hill
+climbing and GES (Chickering, 2002) is the standard approach. Sampling methods
+such as MCMC and GFlowNets (Deleu et al., 2022) give a posterior over graphs rather
+than a single graph, but they get expensive as the number of variables grows.
 
 I'm taking a different angle: **treat structure learning as a sequential
 decision process and let an RL agent search it.** The agent starts from an empty
@@ -19,56 +20,61 @@ reward that says whether each edit made the graph a better explanation of the
 data. Over many edits it converges on a high-scoring network without ever
 touching most of the search space.
 
-Two ideas sit at the centre of this:
+RL for structure learning has been tried before with a whole-graph generator
+trained by policy gradient (Zhu et al., 2020). Here the agent edits the graph one
+step at a time instead. Two ideas sit at the centre of this:
 
-1. **A dynamic Q-table search** (adapted from RLBayes, Wang et al., 2025). Rather
-   than tabling an impossibly large state space, the agent only remembers the
-   networks it has actually visited and caps that memory, dropping the worst
-   ones. This is what makes tabular RL feasible on a combinatorial graph space.
+1. **Q-learning on a tiled environment.** The state is the DAG plus its step index
+   within a tile, and a Q-learning agent learns on `env.step()`, so a discount
+   factor can carry a delayed generative reward back to the edits that earned it.
+   RLBayes (Wang et al., 2025) is the RL baseline: a dynamic Q-table that only
+   stores the networks it has visited and caps that memory by dropping the worst.
+   Its cells are one-step score changes with no bootstrapping, so it acts as a
+   strong search heuristic rather than the full RL agent.
 
 2. **A hybrid reward.** Classical learners score a structure purely on how well
    its shape fits the data (BIC). I add a second term: *simulate* data from the
    learned network and measure how close the synthetic data is to the real data.
    The reward becomes `α · ΔBIC + β · generative-fidelity`. To keep the expensive
    simulation affordable, it's only evaluated at selected steps (a *tiling*
-   schedule); every other step uses the cheap structural score.
+   schedule). Every other step uses the cheap structural score.
 
-The hypothesis is that pairing an RL search — particularly a lightweight,
-single-state metaheuristic like greedy hill climbing — with this hybrid,
-generation-aware objective yields structure learning that is both efficient and
-faithful to the data-generating process, especially where data is scarce.
+The hypothesis is that an RL search driven by this hybrid, generation-aware
+objective learns structures that score as well as hill climbing and GES while
+reproducing the data-generating distribution more faithfully.
 
 ## Why it matters
 
 Bayesian Networks model causal relationships under uncertainty, and they're
-useful precisely where data is incomplete and the causal factor space is large —
+useful precisely where data is incomplete and the causal factor space is large:
 medicine, economics, and the domain I'm most drawn to, **agriculture**. Crop
 yield depends on a high-dimensional tangle of environmental and meteorological
 factors, and better structure learning could make yield and food-supply
-prediction more accessible and more accurate — an increasingly important problem
-as climate change widens the swings. RL is attractive here because it can learn
-from less data than traditional methods need.
+prediction more accessible and more accurate. That matters more as climate
+change widens the swings.
 
 ## Approach in code
 
 ```
-rlig/
-  envs/        dag.py (adjacency matrix, edits, cycle check, legal-edit mask), env.py (tiling env)
-  scoring/     bic.py (cached decomposable BIC + Dirichlet MLE CPTs), simulate.py, genscore.py
-  agents/      rlbayes.py (dynamic Q-table search); DQN / actor-critic go here
-  baselines/   hill_climb.py, ges.py
-  data/        loaders.py (bnlearn benchmarks + synthetic); raw files in data/raw/ (gitignored)
-  eval/        metrics.py (SHD, precision/recall/F1; CPDAG + log-lik to come)
-  configs/     one YAML per experiment
-  scripts/     repro.py (runs everything, writes report/tables + report/figures)
-  report/      report.typ (the deliverable), refs.bib, figures/, tables/
+HD/
   plan.md      assignment spec, build order, HD extensions
   HANDOFF.md   where the work is right now
+  report.typ   the deliverable, with refs.bib
+  rlig/        this repo
+    envs/        dag.py (adjacency matrix, edits, cycle check, legal-edit mask), env.py (tiling env)
+    scoring/     bic.py (cached decomposable BIC + Dirichlet MLE CPTs), simulate.py, genscore.py
+    agents/      rlbayes.py (RLBayes baseline); Q-learning / DQN go here
+    baselines/   hill_climb.py (HC + Tabu), ges.py (pgmpy GES wrapper)
+    data/        loaders.py (samples from the bnlearn networks in data/bif/ + synthetic)
+    eval/        metrics.py (SHD, CPDAG SHD, precision/recall/F1)
+    configs/     one YAML per experiment
+    scripts/     repro.py (runs everything, writes report/tables + report/figures)
+    report/      figures/, tables/ (generated)
 ```
 
-The agent is deliberately reward-agnostic: the same code runs the pure-BIC
-baseline today and the hybrid objective by swapping the `score_fn` — no changes
-to the search itself.
+RLBayes takes any `score_fn`, so it runs the pure-BIC baseline as is. The catch
+is that a hybrid `score_fn` would compute GenScore on every new graph and skip
+tiling, so the hybrid objective belongs to the env-based agent.
 
 ## Run
 
@@ -78,9 +84,9 @@ Every folder is a package; run modules with `-m` from inside `rlig/`:
 python -m envs.dag          # self-check: fast mask == brute-force legality
 python -m scoring.bic       # self-check: cached delta == full rescore
 python -m agents.rlbayes    # RLBayes Q-table recovering structure on synthetic data
-python -m eval.metrics      # self-check
+python -m eval.metrics      # self-check: CPDAG of ASIA, SHD vs CPDAG SHD
+python -m baselines.ges     # GES on ASIA
 python -m scripts.repro --config configs/asia.yaml   # (full experiments, WIP)
-typst compile report/report.typ                        # build the report PDF
 ```
 
 Setup:
@@ -90,12 +96,14 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Experiment knobs (α, β, tile length, generative-step indices, sample count,
-edit budget, max in-degree): `configs/*.yaml`.
+Experiment knobs (seeds, n, train/val/test split, α, β, tile length,
+generative-step indices, sample count, edit budget, max in-degree): `configs/*.yaml`.
 
 ## References
 
+- Chickering (2002). *Optimal Structure Identification with Greedy Search.* JMLR.
 - Deleu et al. (2022). *Bayesian Structure Learning with Generative Flow Networks.* UAI.
 - Wang et al. (2025). *RLBayes: a Bayesian Network Structure Learning Algorithm via Reinforcement Learning-Based Search Strategy.*
 - Kuipers & Moffa. *Partition MCMC* for inference on acyclic digraphs.
+- Zhu, Ng & Chen (2020). *Causal Discovery with Reinforcement Learning.* ICLR.
 - Constantinou et al. (2022). *Effective and efficient structure learning with pruning and model averaging strategies.*

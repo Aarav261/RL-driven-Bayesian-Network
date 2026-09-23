@@ -1,2 +1,3 @@
 numpy>=1.24
 pyyaml>=6.0
+pgmpy==1.1.2   # .bif parsing in data/loaders.py + reference checks in tests only; pinned (APIs rename across versions)
