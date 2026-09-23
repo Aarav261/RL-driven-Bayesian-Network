@@ -23,6 +23,11 @@ G depends on reward_mode (the spec allows either):
 
 Tiling: tau = t mod L. Only steps with tau in I_g pay for fit_cpts (+ sampling
 for neg_js); every other step costs a couple of cached BIC lookups.
+
+GenScore is scored on `val`, never on the test split. neg_js reseeds the sampler
+with the same seed on every call (common random numbers), so a change in GenScore
+reflects the graph edit rather than sampling luck. That also makes GenScore a pure
+function of A, so it is cached per graph.
 """
 
 import numpy as np
@@ -34,8 +39,8 @@ from scoring.simulate import ancestral_sample
 
 
 class RLiGEnv:
-    def __init__(self, train, held_out, cards, cfg, seed=0):
-        self.train, self.held_out = np.asarray(train), np.asarray(held_out)
+    def __init__(self, train, val, cards, cfg, seed=0):
+        self.train, self.val = np.asarray(train), np.asarray(val)
         self.cards = np.asarray(cards)
         self.d = len(self.cards)
         self.cfg = cfg
@@ -44,8 +49,10 @@ class RLiGEnv:
         assert self.I_g <= set(range(self.L)), "I_g must be a subset of 0..L-1"
         self.bic = BIC(self.train, self.cards)
         self.actions = all_actions(self.d)
-        self.rng = np.random.default_rng(seed)
+        self.seed = seed                          # fixed sampler seed for neg_js
         self.n_gen_calls = 0                      # compute cost, for the tiling plots
+        # ponytail: unbounded, one float per distinct graph scored; fine for ~1e5 graphs.
+        self._gen_cache = {}
         self.reset()
 
     # ---- spec API ---------------------------------------------------------
@@ -98,16 +105,21 @@ class RLiGEnv:
         return self.cfg["beta"] != 0 and len(self.I_g) > 0
 
     def gen_score(self, A):
-        """GenScore(A): fit Dirichlet-MLE CPTs on train, score against held-out."""
+        """GenScore(A): fit Dirichlet-MLE CPTs on train, score against val."""
         self.n_gen_calls += 1
-        cfg = self.cfg
-        cpts = fit_cpts(A, self.train, self.cards, cfg["dirichlet_alpha"])
-        if cfg["gen_score"] == "held_out_loglik":
-            return held_out_loglik(cpts, self.held_out)
-        if cfg["gen_score"] == "js":
-            fake = ancestral_sample(A, cpts, cfg["N_s"], self.rng)
-            return neg_js(self.held_out, fake, self.cards)
-        raise ValueError(f"unknown gen_score {cfg['gen_score']}")
+        key = A.tobytes()
+        if key not in self._gen_cache:
+            cfg = self.cfg
+            cpts = fit_cpts(A, self.train, self.cards, cfg["dirichlet_alpha"])
+            if cfg["gen_score"] == "held_out_loglik":
+                g = held_out_loglik(cpts, self.val)
+            elif cfg["gen_score"] == "js":
+                fake = ancestral_sample(A, cpts, cfg["N_s"], np.random.default_rng(self.seed))
+                g = neg_js(self.val, fake, self.cards)
+            else:
+                raise ValueError(f"unknown gen_score {cfg['gen_score']}")
+            self._gen_cache[key] = g
+        return self._gen_cache[key]
 
 
 def _demo():
@@ -167,6 +179,14 @@ def _demo():
     # JS mode runs end to end and is seeded.
     js = lambda: RLiGEnv(train, held, cards, dict(cfg, gen_score="js"), seed=7).gen_prev
     assert js() == js() and js() <= 0
+
+    # Common random numbers: the same graph always gets the same GenScore, even with
+    # the cache cleared, so the sampler really is reseeded on every call.
+    env = RLiGEnv(train, held, cards, dict(cfg, gen_score="js"), seed=7)
+    A = np.array([[0, 1, 0], [0, 0, 0], [0, 0, 0]])
+    g = env.gen_score(A)
+    env._gen_cache.clear()
+    assert env.gen_score(A) == g
     print("envs.env self-check passed")
 
 

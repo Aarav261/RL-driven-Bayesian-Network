@@ -18,13 +18,20 @@ N_s: 2000             # samples drawn from the BN for the generative score
 
 # --- hybrid reward ---
 alpha: 1.0             # weight on delta_bic / N (nats per row)
-beta: 1.0             # weight on generative score
-gen_score: held_out_loglik   # held_out_loglik | js   (mmd later)
+beta: 30.0            # weight on generative score. Per edit on ASIA, median |dBIC/N| = 2.0e-3
+                      # and median |d neg_js| = 6.1e-5 (fixed sampler seed), a ratio of ~32
+gen_score: js         # js | held_out_loglik. held_out_loglik tracks dBIC/N almost exactly
+                      # (corr 0.99 on ASIA), so it is an evaluation metric, not a reward
 reward_mode: difference      # difference: beta*(Gen(G') - Gen at last gen step) | absolute: beta*Gen(G')
 
 # --- Hill-Climbing baseline ---
 hc_tabu_len: 10        # 0 = plain HC; >0 = Tabu over the last N graphs visited (bnlearn default 10)
 hc_max_no_improve: 10  # Tabu stops after this many moves without beating the best graph
+
+# --- RLBayes baseline ---
+rlbayes_max_len: 500   # Q-table rows kept
+rlbayes_max_iter: 5000
+rlbayes_theta: 0.1     # probability of jumping back to the best BN each iteration
 
 # --- CPT learning ---
 dirichlet_alpha: 1.0  # smoothing pseudocount

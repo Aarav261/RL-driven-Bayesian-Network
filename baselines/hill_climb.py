@@ -74,15 +74,15 @@ def _demo():
     assert shd(A, A_true) == 0, A
     assert all(b >= a for a, b in zip(hist, hist[1:]))        # plain HC only climbs
 
-    # Random 12-node network (seed 4 is one where plain HC gets stuck).
-    data, cards, A_true, _ = synthetic(d=12, n=5000, max_indegree=2, seed=4)
+    # Random 12-node network (seed 1 is one where plain HC gets stuck).
+    data, cards, A_true, _ = synthetic(d=12, n=5000, max_indegree=2, seed=1)
     bic = BIC(data, cards)
     A_hc, s_hc, _ = hill_climb(data, cards, 2, bic=bic)
     A_tb, s_tb, _ = hill_climb(data, cards, 2, tabu_len=10, bic=bic)
     assert is_acyclic(A_hc) and A_hc.sum(axis=0).max() <= 2
     # Plain HC stops only at a true local optimum: no legal edit improves BIC.
     acts = all_actions(12)
-    assert max(bic.delta(A_hc, acts[i]) for i in np.flatnonzero(legal_action_mask(A_hc, 2))) <= 0
+    assert max(bic.delta(A_hc, acts[i]) for i in np.flatnonzero(legal_action_mask(A_hc, 2))) <= 1e-9
     # Tabu never ends worse, and here it escapes the local optimum to the true graph's BIC.
     assert s_tb >= s_hc
     assert s_hc < bic(A_true) - 1 and abs(s_tb - bic(A_true)) < 1e-6

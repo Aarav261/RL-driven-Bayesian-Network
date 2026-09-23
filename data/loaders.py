@@ -73,6 +73,13 @@ def load_bnlearn(name, n, seed=0):
     return data, cards, A, names
 
 
+def split(data, fracs, seed=0):
+    """Shuffle rows, then cut into len(fracs) parts (e.g. train / val / test)."""
+    idx = np.random.default_rng(seed).permutation(len(data))
+    cuts = np.round(np.cumsum(fracs)[:-1] / np.sum(fracs) * len(data)).astype(int)
+    return [data[i] for i in np.split(idx, cuts)]
+
+
 def synthetic(d, n, max_indegree=2, card=3, edge_prob=0.3, concentration=0.5, seed=0):
     """Random DAG + random CPTs, ancestral-sampled n rows.
 
@@ -140,6 +147,9 @@ def _demo():
 
     data, _, _, _ = synthetic(d=10, n=1000, seed=0)
     assert data.shape == (1000, 10)
+    tr, va, te = split(data, [0.6, 0.2, 0.2])
+    assert (len(tr), len(va), len(te)) == (600, 200, 200)
+    assert sorted(map(tuple, np.vstack([tr, va, te]))) == sorted(map(tuple, data))
     print(f"data.loaders self-check passed  (5 networks match pgmpy entry by entry; "
           f"ASIA sampler vs pgmpy: mean JS {js:.1e} bits)")
 

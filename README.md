@@ -63,18 +63,22 @@ HD/
   rlig/        this repo
     envs/        dag.py (adjacency matrix, edits, cycle check, legal-edit mask), env.py (tiling env)
     scoring/     bic.py (cached decomposable BIC + Dirichlet MLE CPTs), simulate.py, genscore.py
-    agents/      rlbayes.py (RLBayes baseline); Q-learning / DQN go here
+    agents/      qlearn.py (tabular Q-learning on the env), rlbayes.py (RLBayes baseline)
     baselines/   hill_climb.py (HC + Tabu), ges.py (pgmpy GES wrapper)
-    data/        loaders.py (samples from the bnlearn networks in data/bif/ + synthetic)
+    data/        loaders.py (samples from the bnlearn networks in data/bif/, train/val/test split)
     eval/        metrics.py (SHD, CPDAG SHD, precision/recall/F1)
     configs/     one YAML per experiment
-    scripts/     repro.py (runs everything, writes report/tables + report/figures)
-    report/      figures/, tables/ (generated)
+    scripts/     repro.py (runs every method on every seed, writes report/tables)
+    report/      tables/ (generated)
 ```
 
 RLBayes takes any `score_fn`, so it runs the pure-BIC baseline as is. The catch
 is that a hybrid `score_fn` would compute GenScore on every new graph and skip
-tiling, so the hybrid objective belongs to the env-based agent.
+tiling, so the hybrid objective belongs to the Q-learning agent.
+
+Data is split three ways. BIC and the CPTs come from train, the generative reward
+is scored on val, and every reported metric is computed on test, which no method
+sees while learning.
 
 ## Run
 
@@ -84,9 +88,10 @@ Every folder is a package; run modules with `-m` from inside `rlig/`:
 python -m envs.dag          # self-check: fast mask == brute-force legality
 python -m scoring.bic       # self-check: cached delta == full rescore
 python -m agents.rlbayes    # RLBayes Q-table recovering structure on synthetic data
+python -m agents.qlearn     # Q-learning on the tiled env recovering structure on synthetic data
 python -m eval.metrics      # self-check: CPDAG of ASIA, SHD vs CPDAG SHD
 python -m baselines.ges     # GES on ASIA
-python -m scripts.repro --config configs/asia.yaml   # (full experiments, WIP)
+python -m scripts.repro --config configs/asia.yaml   # all methods x all seeds -> report/tables/asia.csv
 ```
 
 Setup:

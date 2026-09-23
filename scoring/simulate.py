@@ -12,14 +12,16 @@ from scoring.bic import _parent_config_index
 
 def ancestral_sample(A, cpts, n, rng):
     """Return n rows (int ndarray, n x d) sampled from the BN (A, cpts).
-    `cpts` is scoring.bic.fit_cpts output; `rng` a numpy Generator (seed control)."""
+    `cpts` is scoring.bic.fit_cpts output; `rng` a numpy Generator (seed control).
+    Node v always uses uniform column v, whatever the topological order, so two graphs
+    sampled from the same seed share their randomness (common random numbers)."""
+    U = rng.random((n, len(A)))
     X = np.zeros((n, len(A)), dtype=int)
     for v in topological_order(A):
         c = cpts[v]
         pconfig, _ = _parent_config_index(X, list(c["parents"]), c["pcards"])
         cdf = np.cumsum(c["table"][pconfig], axis=1)          # n x r, row per sample
-        u = rng.random((n, 1))
-        X[:, v] = np.minimum((u > cdf).sum(axis=1), c["r"] - 1)  # guard float round-off
+        X[:, v] = np.minimum((U[:, [v]] > cdf).sum(axis=1), c["r"] - 1)  # guard float round-off
     return X
 
 
