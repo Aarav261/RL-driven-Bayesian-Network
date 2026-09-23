@@ -13,20 +13,24 @@ def empty_dag(d):
     return np.zeros((d, d), dtype=int)
 
 
-def is_acyclic(A):
-    """Kahn's algorithm: peel off nodes with no incoming edges."""
-    A = A.copy()
+def topological_order(A):
+    """Kahn's algorithm: peel off nodes with no incoming edges. Returns the nodes
+    in topological order; shorter than d iff A has a cycle."""
     indeg = A.sum(axis=0)
     frontier = [n for n in range(len(A)) if indeg[n] == 0]
-    seen = 0
+    order = []
     while frontier:
         n = frontier.pop()
-        seen += 1
-        for j in np.where(A[n] == 1)[0]:
+        order.append(n)
+        for j in np.flatnonzero(A[n]):
             indeg[j] -= 1
             if indeg[j] == 0:
                 frontier.append(j)
-    return seen == len(A)
+    return order
+
+
+def is_acyclic(A):
+    return len(topological_order(A)) == len(A)
 
 
 def apply_action(A, action):
