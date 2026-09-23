@@ -43,7 +43,7 @@ def _demo():
 
     reversed_edge = np.array([[0, 0, 0], [1, 0, 1], [0, 0, 0]])  # 1->0 instead of 0->1
     assert shd(reversed_edge, true) == 1  # one pair differs
-    print("evaluate.py self-check passed")
+    print("eval.metrics self-check passed")
 
 
 if __name__ == "__main__":

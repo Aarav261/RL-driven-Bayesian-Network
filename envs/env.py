@@ -1,6 +1,6 @@
 """Step 5: the RL environment — DAG editing as a sequential decision process.
 
-Wraps dag.py + score.py + genscore.py and adds TILING: within a tile of length
+Wraps envs.dag + scoring.bic + scoring.genscore and adds TILING: within a tile of length
 L, only steps whose index is in I_g pay the expensive generative score;
 everywhere else the reward is the cheap delta_bic.
 

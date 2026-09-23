@@ -2,8 +2,8 @@
 seed: 0
 
 dataset: asia          # asia | sachs | insurance | child | alarm | synthetic
-data_path: data/asia.csv
-true_structure: data/asia_true.txt   # ground-truth DAG for SHD
+data_path: data/raw/asia.csv
+true_structure: data/raw/asia_true.txt   # ground-truth DAG for SHD
 
 # --- structure constraints ---
 max_indegree_k: 2      # in {2, 3}

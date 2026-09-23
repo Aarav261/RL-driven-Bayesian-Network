@@ -80,9 +80,32 @@ def is_legal(A, action, max_indegree):
     return is_acyclic(apply_action(A, action))
 
 
+def reachability(A):
+    """R[i, j] = True iff there is a directed path i ~> j (length >= 1).
+    Warshall's closure, one vectorised O(d^2) sweep per node -> O(d^3) total."""
+    R = A.astype(bool)
+    for k in range(len(A)):
+        R |= np.outer(R[:, k], R[k])
+    return R
+
+
 def legal_action_mask(A, max_indegree):
-    """Boolean list aligned with all_actions(d)."""
-    return [is_legal(A, a, max_indegree) for a in all_actions(len(A))]
+    """Boolean array aligned with all_actions(d), computed for every edit at once.
+
+    One closure per state replaces a copy + Kahn's pass per candidate edit:
+      add i->j     legal iff no edge i-j either way, j under cap, and no path j ~> i
+      delete i->j  legal iff the edge exists
+      reverse i->j legal iff the edge exists, i under cap, and i reaches j only via
+                   the direct edge (no child c != j of i with c ~> j)
+    """
+    E = A.astype(bool)
+    R = reachability(A)
+    room = A.sum(axis=0) < max_indegree            # room[v]: v can take another parent
+    add = ~E & ~R.T & room[None, :]                # R[j, i] already covers edge j->i
+    dele = E
+    rev = E & room[:, None] & ~((A @ R) > 0)       # (A @ R)[i, j]: some child of i reaches j
+    off = ~np.eye(len(A), dtype=bool)
+    return np.stack([add, dele, rev], axis=-1)[off].ravel()   # (i, j) row-major, then op
 
 
 def _demo():
@@ -117,7 +140,19 @@ def _demo():
 
     # Mask length matches the action space.
     assert len(legal_action_mask(A, k)) == len(all_actions(d))
-    print("dag.py self-check passed")
+
+    # Vectorised mask must agree with the brute-force is_legal on random DAGs.
+    rng = np.random.default_rng(0)
+    for _ in range(200):
+        d = int(rng.integers(2, 9))
+        k = int(rng.integers(1, 4))
+        order = rng.permutation(d)                 # random topological order
+        G = np.triu(rng.random((d, d)) < 0.35, 1).astype(int)[np.ix_(order, order)]
+        G[:, G.sum(axis=0) > k] = 0                # respect the cap in the start state
+        fast = legal_action_mask(G, k)
+        slow = [is_legal(G, a, k) for a in all_actions(d)]
+        assert list(fast) == slow, (G, k)
+    print("envs.dag self-check passed")
 
 
 if __name__ == "__main__":

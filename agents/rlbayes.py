@@ -10,15 +10,15 @@ MAX_LEN rows, drop the worst-scored BN. Bounded memory, unbounded search.
 
 The reward is a *score difference*, so this agent is reward-agnostic: pass
 score_fn = bic for the classic baseline, or the hybrid alpha*BIC + beta*GenScore
-for RLiG. Illegal ops are pre-masked to -inf (dag.legal_action_mask) rather than
+for RLiG. Illegal ops are pre-masked to -inf (envs.dag.legal_action_mask) rather than
 discovered by trial as in the paper — same effect, fewer wasted iterations.
 """
 
 import numpy as np
 
-from .dag import (ADD, DELETE, REVERSE, all_actions, apply_action,
-                  empty_dag, legal_action_mask)
-from .score import bic
+from envs.dag import (ADD, DELETE, REVERSE, all_actions, apply_action,
+                      empty_dag, legal_action_mask)
+from scoring.bic import BIC
 
 
 def _reverse_action(action):
@@ -57,7 +57,7 @@ class RLBayesAgent:
     def _add_row(self, A):
         q = np.zeros(len(self.actions))
         mask = legal_action_mask(A, self.k)
-        q[[not m for m in mask]] = -np.inf          # illegal ops never chosen
+        q[~mask] = -np.inf          # illegal ops never chosen
         self.rows.append(A)
         self.Q.append(q)
         self.scores.append(self.score_fn(A))
@@ -122,18 +122,18 @@ def _demo():
     data = np.stack([x0, x1, x2], axis=1)
     cards = np.array([2, 2, 2])
 
-    score_fn = lambda A: bic(A, data, cards)
-    agent = RLBayesAgent(d=3, score_fn=score_fn, max_indegree=2,
+    bic = BIC(data, cards)
+    agent = RLBayesAgent(d=3, score_fn=bic, max_indegree=2,
                          max_len=30, max_iter=1500, theta=0.1, seed=0)
     A, s, history = agent.train()
 
-    empty_score = bic(empty_dag(3), data, cards)
+    empty_score = bic(empty_dag(3))
     assert s > empty_score, (s, empty_score)          # learned something
     assert A[0, 1] == 1 or A[1, 0] == 1               # recovered the 0-1 link
     assert A[0, 2] == 0 and A[2, 0] == 0              # no spurious 0-2 edge
     assert A[1, 2] == 0 and A[2, 1] == 0              # no spurious 1-2 edge
     assert history[-1] >= history[0]                  # learning curve non-decreasing overall
-    print(f"agent.py self-check passed  (best BIC {s:.2f} vs empty {empty_score:.2f})")
+    print(f"agents.rlbayes self-check passed  (best BIC {s:.2f} vs empty {empty_score:.2f})")
 
 
 if __name__ == "__main__":
