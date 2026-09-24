@@ -44,6 +44,10 @@ class QLearningAgent:
     def _key(s):
         return s["A"].tobytes(), s["tau"]
 
+    def _q(self, s):
+        """Q-values of every action in s, or None if s was never visited."""
+        return self.Q.get(self._key(s))
+
     def _act(self, q, legal, eps):
         if q is None or self.rng.random() < eps:
             return int(self.rng.choice(legal))
@@ -102,7 +106,7 @@ class QLearningAgent:
         best_A, best = s["A"], 0.0
         legal = np.flatnonzero(env.legal_mask())
         while not done and legal.size:
-            q = self.Q.get(self._key(s))
+            q = self._q(s)
             self.greedy_unseen += q is None
             s, r, done, _ = env.step(self._act(q, legal, 0.0))
             legal = np.flatnonzero(env.legal_mask())

@@ -7,7 +7,8 @@ Per seed: sample n rows from the network, split train / val / test, then
     - HC, Tabu, GES and RLBayes learn from train (BIC only);
     - Q-learning learns from train, with GenScore rewarded on val. Two rows:
       qlearn_best (best graph the search saw, by the hybrid score) and qlearn_greedy
-      (the learned policy's greedy rollout);
+      (the learned policy's greedy rollout). DQN (HD extension 1) gives the same two
+      rows, dqn_best and dqn_greedy, on the same env and budget;
     - every method is reported on test, which no method sees during learning.
 steps = graph edits made (HC/Tabu moves, RLBayes iterations, Q-learning env steps);
 gen_evals = GenScore simulations; unseen = greedy moves from states not in the Q-table.
@@ -23,6 +24,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
+from agents.dqn import DQNAgent
 from agents.qlearn import QLearningAgent
 from agents.rlbayes import RLBayesAgent
 from baselines.ges import ges
@@ -53,16 +55,23 @@ def run_seed(cfg, seed):
     k, bic = cfg["max_indegree_k"], BIC(train, cards)
 
     # Each learner returns {row name: (DAG, extra columns)}.
-    def qlearn():
+    def rl(name, make_agent):
         env = RLiGEnv(train, val, cards, cfg, seed=seed)
-        agent = QLearningAgent(env, cfg["lr"], cfg["gamma"], cfg["epsilon"], cfg["epsilon_decay"],
-                               cfg["epsilon_min"], seed=seed)
+        agent = make_agent(env)
         agent.train(cfg["episodes"])
         best = agent.best_searched()[0]
         greedy = agent.best_graph()[0]
         extra = {"steps": agent.steps, "gen_evals": env.n_gen_evals}
-        return {"qlearn_best": (best, extra),
-                "qlearn_greedy": (greedy, dict(extra, unseen=agent.greedy_unseen))}
+        return {f"{name}_best": (best, extra),
+                f"{name}_greedy": (greedy, dict(extra, unseen=agent.greedy_unseen))}
+
+    qlearn = lambda: rl("qlearn", lambda env: QLearningAgent(
+        env, cfg["lr"], cfg["gamma"], cfg["epsilon"], cfg["epsilon_decay"], cfg["epsilon_min"],
+        seed=seed))
+    dqn = lambda: rl("dqn", lambda env: DQNAgent(
+        env, cfg["dqn_lr"], cfg["gamma"], cfg["dqn_epsilon"], cfg["dqn_epsilon_decay"],
+        cfg["dqn_epsilon_min"], cfg["dqn_hidden"], cfg["dqn_batch"], cfg["dqn_buffer"],
+        cfg["dqn_train_every"], cfg["dqn_target_every"], seed=seed))
 
     def hc(**kw):
         A, _, hist = hill_climb(train, cards, k, bic=bic, **kw)
@@ -80,6 +89,7 @@ def run_seed(cfg, seed):
         lambda: {"ges": (ges(train, cards), {})},
         lambda: {"rlbayes": rlbayes()},
         qlearn,
+        dqn,
     ]
     rows = []
     for learn in methods:
@@ -90,21 +100,22 @@ def run_seed(cfg, seed):
             row = {"method": name, "seed": seed, "seconds": secs, **extra}
             row.update(evaluate(A, A_true, bic, train, test, cards, cfg, seed))
             rows.append(row)
-            print(f"  seed {seed} {name:13s} SHD {row['shd']:2d}  CPDAG SHD {row['shd_cpdag']:2d}  "
+            print(f"  seed {seed} {name:14s} SHD {row['shd']:2d}  CPDAG SHD {row['shd_cpdag']:2d}  "
                   f"BIC/N {row['bic_per_row']:.4f}  steps {row.get('steps', '-')}  {secs:.1f}s")
     return rows
 
 
 def main(config_path, n_seeds=None):
     cfg = yaml.safe_load(Path(config_path).read_text())
-    rows = [r for seed in cfg["seeds"][:n_seeds] for r in run_seed(cfg, seed)]
-
     OUT.mkdir(parents=True, exist_ok=True)
     path = OUT / f"{cfg['dataset']}.csv"
-    with open(path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["method", "seed"] + METRICS)
-        w.writeheader()
-        w.writerows(rows)
+    rows = []
+    for seed in cfg["seeds"][:n_seeds]:
+        rows += run_seed(cfg, seed)
+        with open(path, "w", newline="") as f:       # after every seed: a kill loses one seed
+            w = csv.DictWriter(f, fieldnames=["method", "seed"] + METRICS)
+            w.writeheader()
+            w.writerows(rows)
 
     print(f"\n{'method':13s} " + " ".join(f"{m:>18s}" for m in METRICS))
     for name in dict.fromkeys(r["method"] for r in rows):

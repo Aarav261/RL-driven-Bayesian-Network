@@ -63,7 +63,8 @@ HD/
   rlig/        this repo
     envs/        dag.py (adjacency matrix, edits, cycle check, legal-edit mask), env.py (tiling env)
     scoring/     bic.py (cached decomposable BIC + Dirichlet MLE CPTs), simulate.py, genscore.py
-    agents/      qlearn.py (tabular Q-learning on the env), rlbayes.py (RLBayes baseline)
+    agents/      qlearn.py (tabular Q-learning on the env), dqn.py (masked Double DQN, HD ext 1),
+                 rlbayes.py (RLBayes baseline)
     baselines/   hill_climb.py (HC + Tabu), ges.py (pgmpy GES wrapper)
     data/        loaders.py (samples from the bnlearn networks in data/bif/, train/val/test split)
     eval/        metrics.py (SHD, CPDAG SHD, precision/recall/F1)
@@ -89,6 +90,7 @@ python -m envs.dag          # self-check: fast mask == brute-force legality
 python -m scoring.bic       # self-check: cached delta == full rescore
 python -m agents.rlbayes    # RLBayes Q-table recovering structure on synthetic data
 python -m agents.qlearn     # Q-learning on the tiled env recovering structure on synthetic data
+python -m agents.dqn        # masked Double DQN, same env and outputs as Q-learning
 python -m eval.metrics      # self-check: CPDAG of ASIA, SHD vs CPDAG SHD
 python -m baselines.ges     # GES on ASIA
 python -m scripts.repro --config configs/asia.yaml   # all methods x all seeds -> report/tables/asia.csv

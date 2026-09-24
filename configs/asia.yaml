@@ -1,5 +1,5 @@
 # RLiG experiment config. Every knob the report must discuss lives here.
-seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]   # one full run per seed (data sample + search)
+seeds: [0, 1, 2, 3, 4, 5]   # one full run per seed (data sample + search); 6 keeps a full run ~40 min
 
 dataset: asia          # asia | sachs | insurance | child | alarm | synthetic
 n: 5000                # rows sampled from data/bif/<dataset>.bif (truth DAG comes from the same file)
@@ -43,3 +43,14 @@ epsilon: 0.2
 epsilon_decay: 0.999
 epsilon_min: 0.01       # floor, so longer runs keep exploring (2000 eps ends at ~0.027)
 episodes: 2000
+
+# --- DQN (HD extension 1; same episodes, so the same ~100k-step budget) ---
+dqn_lr: 0.001
+dqn_epsilon: 1.0          # starts fully random: a fresh network's Q-values mean nothing
+dqn_epsilon_decay: 0.998  # per episode: 0.135 after 1000 episodes
+dqn_epsilon_min: 0.05
+dqn_hidden: 256
+dqn_batch: 64
+dqn_buffer: 50000
+dqn_train_every: 4        # env steps per gradient step
+dqn_target_every: 1000    # env steps per target-network sync
