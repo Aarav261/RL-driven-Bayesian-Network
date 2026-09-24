@@ -1,7 +1,8 @@
 # RLiG experiment config. Every knob the report must discuss lives here.
-seeds: [0, 1, 2, 3, 4, 5]   # one full run per seed (data sample + search); 6 keeps a full run ~40 min
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]   # one full run per seed (data sample + search), run in parallel
 
 dataset: asia          # asia | sachs | insurance | child | alarm | synthetic
+# synthetic: {d: 10, max_indegree: 2, card: 3, edge_prob: 0.3, concentration: 0.5}   # data.loaders.synthetic; dataset: synthetic only
 n: 5000                # rows sampled from data/bif/<dataset>.bif (truth DAG comes from the same file)
 split: [0.6, 0.2, 0.2] # train (BIC + CPTs) / val (GenScore reward) / test (reported metrics only)
 
@@ -54,3 +55,4 @@ dqn_batch: 64
 dqn_buffer: 50000
 dqn_train_every: 4        # env steps per gradient step
 dqn_target_every: 1000    # env steps per target-network sync
+dqn_emb_dim: 16           # per-part (op, i, j) embedding size for the dqn_emb head

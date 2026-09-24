@@ -86,10 +86,11 @@ def is_legal(A, action, max_indegree):
 
 def reachability(A):
     """R[i, j] = True iff there is a directed path i ~> j (length >= 1).
-    Warshall's closure, one vectorised O(d^2) sweep per node -> O(d^3) total."""
+    Warshall's closure, one vectorised O(d^2) sweep per node -> O(d^3) total.
+    A may be a stack of graphs (..., d, d)."""
     R = A.astype(bool)
-    for k in range(len(A)):
-        R |= np.outer(R[:, k], R[k])
+    for k in range(A.shape[-1]):
+        R |= R[..., :, k, None] & R[..., None, k, :]
     return R
 
 
@@ -101,15 +102,18 @@ def legal_action_mask(A, max_indegree):
       delete i->j  legal iff the edge exists
       reverse i->j legal iff the edge exists, i under cap, and i reaches j only via
                    the direct edge (no child c != j of i with c ~> j)
+
+    A may be a stack of graphs (..., d, d); the mask is then (..., n_actions).
     """
     E = A.astype(bool)
     R = reachability(A)
-    room = A.sum(axis=0) < max_indegree            # room[v]: v can take another parent
-    add = ~E & ~R.T & room[None, :]                # R[j, i] already covers edge j->i
+    room = A.sum(axis=-2) < max_indegree           # room[v]: v can take another parent
+    add = ~E & ~R.swapaxes(-1, -2) & room[..., None, :]   # R[j, i] already covers edge j->i
     dele = E
-    rev = E & room[:, None] & ~((A @ R) > 0)       # (A @ R)[i, j]: some child of i reaches j
-    off = ~np.eye(len(A), dtype=bool)
-    return np.stack([add, dele, rev], axis=-1)[off].ravel()   # (i, j) row-major, then op
+    rev = E & room[..., :, None] & ~((A @ R) > 0)  # (A @ R)[i, j]: some child of i reaches j
+    off = ~np.eye(A.shape[-1], dtype=bool)
+    m = np.stack([add, dele, rev], axis=-1)[..., off, :]      # (i, j) row-major, then op
+    return m.reshape(*A.shape[:-2], -1)
 
 
 def _demo():
@@ -156,6 +160,9 @@ def _demo():
         fast = legal_action_mask(G, k)
         slow = [is_legal(G, a, k) for a in all_actions(d)]
         assert list(fast) == slow, (G, k)
+    # A stack of graphs gives the same masks as one call per graph.
+    Gs = np.stack([np.triu(rng.random((6, 6)) < 0.35, 1).astype(int) for _ in range(20)])
+    assert (legal_action_mask(Gs, 2) == np.stack([legal_action_mask(G, 2) for G in Gs])).all()
     print("envs.dag self-check passed")
 
 
