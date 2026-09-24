@@ -35,6 +35,7 @@ class QLearningAgent:
         self._top, self._top_keys = [], set()   # min-heap of (bic, key, A) seen in training
         self.steps = 0                           # env steps taken in training
         self.greedy_unseen = 0                   # greedy moves made from states not in Q
+        self.curve = []                          # per episode: (return, best BIC seen, gen evals, steps)
         self.rng = np.random.default_rng(seed)
         # ponytail: one dense row of len(actions) floats per visited state; switch to
         # sparse rows if the table outgrows memory on ALARM.
@@ -74,8 +75,17 @@ class QLearningAgent:
                 self.steps += 1
                 self._remember(s)
             returns.append(total)
+            self._log(total)
             eps = max(eps * self.epsilon_decay, self.epsilon_min)
         return returns
+
+    def _log(self, total):
+        best = max((b for b, _, _ in self._top), default=-np.inf)
+        self.curve.append((total, best, self.env.n_gen_evals, self.steps))
+
+    def best_by_bic(self):
+        """Highest-BIC graph in the top-k memory: best_searched's pick at beta = 0."""
+        return max(self._top, key=lambda t: t[0])[2]
 
     def _remember(self, s):
         key = s["A"].tobytes()

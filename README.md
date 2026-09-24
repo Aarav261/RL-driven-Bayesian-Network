@@ -68,9 +68,10 @@ HD/
     baselines/   hill_climb.py (HC + Tabu), ges.py (pgmpy GES wrapper)
     data/        loaders.py (samples from the bnlearn networks in data/bif/, train/val/test split)
     eval/        metrics.py (SHD, CPDAG SHD, precision/recall/F1)
-    configs/     one YAML per experiment
-    scripts/     repro.py (runs every method on every seed, writes report/tables)
-    report/      tables/ (generated)
+    configs/     one YAML per network (asia, sachs, child, insurance, alarm, synthetic)
+    scripts/     repro.py (runs every method on every seed, writes report/tables),
+                 figures.py (learning curves + posterior predictive check from those tables)
+    report/      tables/, figures/ (generated)
 ```
 
 RLBayes takes any `score_fn`, so it runs the pure-BIC baseline as is. The catch
@@ -94,6 +95,8 @@ python -m agents.dqn        # masked Double DQN (both Q-heads), same env and out
 python -m eval.metrics      # self-check: CPDAG of ASIA, SHD vs CPDAG SHD
 python -m baselines.ges     # GES on ASIA
 python -m scripts.repro --config configs/asia.yaml   # all methods x all seeds (4 in parallel) -> report/tables/asia.csv
+python -m scripts.repro --methods dqn_mlp --set beta=0   # an ablation -> report/tables/asia_beta0_dqn_mlp.csv
+python -m scripts.figures                             # report/figures/*.svg from the tables above
 ```
 
 Setup:

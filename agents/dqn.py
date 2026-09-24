@@ -135,6 +135,7 @@ class DQNAgent(QLearningAgent):
                 if self.steps % self.target_every == 0:
                     self.target.load_state_dict(self.net.state_dict())
             returns.append(total)
+            self._log(total)
             eps = max(eps * self.epsilon_decay, self.epsilon_min)
         return returns
 

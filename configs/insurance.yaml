@@ -1,0 +1,59 @@
+# Same as asia.yaml except dataset, k, budget_T (and RLBayes iterations = 2000 x T).
+# RLiG experiment config. Every knob the report must discuss lives here.
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]   # one full run per seed (data sample + search), run in parallel
+
+dataset: insurance          # asia | sachs | insurance | child | alarm | synthetic
+# synthetic: {d: 10, max_indegree: 2, card: 3, edge_prob: 0.3, concentration: 0.5}   # data.loaders.synthetic; dataset: synthetic only
+n: 5000                # rows sampled from data/bif/<dataset>.bif (truth DAG comes from the same file)
+split: [0.6, 0.2, 0.2] # train (BIC + CPTs) / val (GenScore reward) / test (reported metrics only)
+
+# --- structure constraints ---
+max_indegree_k: 3      # in {2, 3}
+budget_T: 100           # edit budget per episode
+l_stall: 10            # stop after this many consecutive steps with dBIC <= 0
+penalty: -0.05         # reward for an infeasible action; ~25x a typical |dBIC/N| (~2e-3 on ASIA)
+
+# --- tiling ---
+tile_L: 5              # tile length
+I_g: [4]               # generative-score step indices within a tile (0..L-1)
+N_s: 2000             # samples drawn from the BN for the generative score
+
+# --- hybrid reward ---
+alpha: 1.0             # weight on delta_bic / N (nats per row)
+beta: 30.0            # weight on generative score. Per edit on ASIA, median |dBIC/N| = 2.0e-3
+                      # and median |d neg_js| = 6.1e-5 (fixed sampler seed), a ratio of ~32
+gen_score: js         # js | held_out_loglik. held_out_loglik tracks dBIC/N almost exactly
+                      # (corr 0.99 on ASIA), so it is an evaluation metric, not a reward
+reward_mode: difference      # difference: beta*(Gen(G') - Gen at last gen step) | absolute: beta*Gen(G')
+
+# --- Hill-Climbing baseline ---
+hc_tabu_len: 10        # 0 = plain HC; >0 = Tabu over the last N graphs visited (bnlearn default 10)
+hc_max_no_improve: 10  # Tabu stops after this many moves without beating the best graph
+
+# --- RLBayes baseline ---
+rlbayes_max_len: 500   # Q-table rows kept
+rlbayes_max_iter: 200000   # = episodes x budget_T, the most env steps Q-learning can take
+rlbayes_theta: 0.1     # probability of jumping back to the best BN each iteration
+
+# --- CPT learning ---
+dirichlet_alpha: 1.0  # smoothing pseudocount
+
+# --- Q-learning ---
+lr: 0.1
+gamma: 0.95
+epsilon: 0.2
+epsilon_decay: 0.999
+epsilon_min: 0.01       # floor, so longer runs keep exploring (2000 eps ends at ~0.027)
+episodes: 2000
+
+# --- DQN (HD extension 1; same episodes, so the same ~100k-step budget) ---
+dqn_lr: 0.001
+dqn_epsilon: 1.0          # starts fully random: a fresh network's Q-values mean nothing
+dqn_epsilon_decay: 0.998  # per episode: 0.135 after 1000 episodes
+dqn_epsilon_min: 0.05
+dqn_hidden: 256
+dqn_batch: 64
+dqn_buffer: 50000
+dqn_train_every: 4        # env steps per gradient step
+dqn_target_every: 1000    # env steps per target-network sync
+dqn_emb_dim: 16           # per-part (op, i, j) embedding size for the dqn_emb head

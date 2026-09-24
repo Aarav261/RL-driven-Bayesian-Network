@@ -18,8 +18,11 @@ Per seed: sample n rows from the network, split train / val / test, then
       action) and dqn_emb_* (phi(s) . psi(a) over (op, i, j) embeddings);
     - every method is reported on test, which no method sees during learning.
 steps = graph edits made (HC/Tabu moves, RLBayes iterations, Q-learning env steps);
-gen_evals = GenScore simulations; unseen = greedy moves from states not in the Q-table.
-Writes report/tables/<dataset>.csv (one row per method per seed) and prints
+gen_evals = GenScore simulations; unseen = greedy moves from states not in the Q-table;
+edges = the learned DAG as "i>j" pairs. Each RL agent also gives <name>_bicpick: the
+highest-BIC graph of the same top-20 memory, i.e. what best_searched would pick at beta = 0.
+Writes report/tables/<dataset>.csv (one row per method per seed) plus <dataset>_curves.npz
+(per RL agent and seed: return, best BIC, gen evals, steps per episode) and prints
 mean +- std per method.
 """
 
@@ -51,6 +54,7 @@ torch.set_num_threads(1)   # module level, so every spawned worker runs it too
 OUT = Path(__file__).parent.parent / "report" / "tables"
 METRICS = ["shd", "shd_cpdag", "f1", "bic_per_row", "test_loglik", "test_neg_js", "seconds",
            "steps", "gen_evals", "unseen"]
+COLUMNS = ["method", "seed"] + METRICS + ["edges"]
 
 
 def evaluate(A, A_true, bic, train, test, cards, cfg, seed):
@@ -58,7 +62,17 @@ def evaluate(A, A_true, bic, train, test, cards, cfg, seed):
     fake = ancestral_sample(A, cpts, cfg["N_s"], np.random.default_rng(seed))
     return {"shd": shd(A, A_true), "shd_cpdag": shd_cpdag(A, A_true),
             "f1": precision_recall_f1(A, A_true)[2], "bic_per_row": bic(A) / len(train),
-            "test_loglik": held_out_loglik(cpts, test), "test_neg_js": neg_js(test, fake, cards)}
+            "test_loglik": held_out_loglik(cpts, test), "test_neg_js": neg_js(test, fake, cards),
+            "edges": " ".join(f"{i}>{j}" for i, j in zip(*np.nonzero(A)))}
+
+
+def parse_edges(s, d):
+    """Inverse of the edges column: "0>1 2>3" -> d x d adjacency matrix."""
+    A = np.zeros((d, d), dtype=int)
+    for e in str(s).split():
+        i, j = map(int, e.split(">"))
+        A[i, j] = 1
+    return A
 
 
 def run_seed(cfg, seed, only=None):
@@ -69,6 +83,8 @@ def run_seed(cfg, seed, only=None):
     train, val, test = split(data, cfg["split"], seed=seed)
     k, bic = cfg["max_indegree_k"], BIC(train, cards)
 
+    curves = {}
+
     # Each learner returns {row name: (DAG, extra columns)}.
     def rl(name, make_agent):
         env = RLiGEnv(train, val, cards, cfg, seed=seed)
@@ -77,7 +93,9 @@ def run_seed(cfg, seed, only=None):
         best = agent.best_searched()[0]
         greedy = agent.best_graph()[0]
         extra = {"steps": agent.steps, "gen_evals": env.n_gen_evals}
+        curves[f"{name}_s{seed}"] = np.array(agent.curve)
         return {f"{name}_best": (best, extra),
+                f"{name}_bicpick": (agent.best_by_bic(), extra),
                 f"{name}_greedy": (greedy, dict(extra, unseen=agent.greedy_unseen))}
 
     qlearn = lambda: rl("qlearn", lambda env: QLearningAgent(
@@ -119,7 +137,7 @@ def run_seed(cfg, seed, only=None):
             rows.append(row)
             print(f"  seed {seed} {name:14s} SHD {row['shd']:2d}  CPDAG SHD {row['shd_cpdag']:2d}  "
                   f"BIC/N {row['bic_per_row']:.4f}  steps {row.get('steps', '-')}  {secs:.1f}s")
-    return rows
+    return rows, curves
 
 
 def main(config_path, n_seeds=None, workers=4, only=None, overrides=()):
@@ -130,15 +148,18 @@ def main(config_path, n_seeds=None, workers=4, only=None, overrides=()):
     # An ablation or a subset of methods gets its own file, so it never overwrites the main table.
     tag = "".join(f"_{k}{v}" for k, v in sets.items()) + ("_" + "-".join(only) if only else "")
     path = OUT / f"{cfg['dataset']}{tag}.csv"
-    seeds, rows = cfg["seeds"][:n_seeds], []
+    seeds, rows, curves = cfg["seeds"][:n_seeds], [], {}
     with Pool(min(workers, len(seeds))) as pool:
-        for seed_rows in pool.imap_unordered(partial(run_seed, cfg, only=only), seeds):
+        for seed_rows, seed_curves in pool.imap_unordered(partial(run_seed, cfg, only=only), seeds):
             rows += seed_rows
+            curves.update(seed_curves)
             rows.sort(key=lambda r: r["seed"])       # stable: method order kept within a seed
             with open(path, "w", newline="") as f:   # after every seed: a kill loses only running seeds
-                w = csv.DictWriter(f, fieldnames=["method", "seed"] + METRICS)
+                w = csv.DictWriter(f, fieldnames=COLUMNS)
                 w.writeheader()
                 w.writerows(rows)
+            if curves:
+                np.savez(path.with_name(path.stem + "_curves.npz"), **curves)
 
     print(f"\n{'method':13s} " + " ".join(f"{m:>18s}" for m in METRICS))
     for name in dict.fromkeys(r["method"] for r in rows):

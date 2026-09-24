@@ -2,3 +2,4 @@ numpy>=1.24
 pyyaml>=6.0
 pgmpy==1.1.2   # .bif parsing in data/loaders.py + reference checks in tests only; pinned (APIs rename across versions)
 torch==2.14.0   # agents/dqn.py (HD extension 1); the CPU build is enough
+matplotlib==3.11.2   # scripts/figures.py only
